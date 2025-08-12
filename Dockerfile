@@ -62,16 +62,25 @@ ENV UV_LINK_MODE=copy
 WORKDIR /talos
 
 # Install the project's dependencies using the lockfile and settings
-RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-install-project --no-dev
+# Doesn't work on turing because on ulimit value too low
+#RUN --mount=type=cache,target=/root/.cache/uv \
+#    --mount=type=bind,source=uv.lock,target=uv.lock \
+#    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+#    uv sync --frozen --no-install-project --no-dev
+
+COPY requirements-lint.txt ./
+RUN python3 -m venv .venv && \
+    . .venv/bin/activate && \
+    pip install --upgrade pip && \
+    pip install -r requirements-lint.txt
+
 
 # Add in the additional requirements that are most likely to change.
 COPY LICENSE pyproject.toml uv.lock README.md .
 COPY src src/
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install ".[cpg]"
+#RUN --mount=type=cache,target=/root/.cache/uv \
+#    uv pip install ".[cpg]"
+RUN . .venv/bin/activate && pip install ".[cpg]"
 
 # Place executables in the environment at the front of the path
 ENV PATH="/talos/.venv/bin:$PATH"
