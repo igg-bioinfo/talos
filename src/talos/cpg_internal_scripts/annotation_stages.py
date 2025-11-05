@@ -32,11 +32,23 @@ this workflow is designed to be something which could be executed easily off-sit
 
 * Step 6: Load the HailTable into the final MatrixTable
     - Reads the minimised MatrixTable and the HailTable of annotations
+
+And somewhat in parallel to that:
+
+* Step M1: If availalable, pick up a Mitochondrial joint-vcf
+    - this will be filed in Metamist under the dataset, called "merged_mito.vcf.bgz"
+    - Mito variant calling is based on "chrM" (Hail likes "chrM")
+    - Run BCFtools consequence annotation on that VCF
+    - Run the step.5 from above (reformatting annotations)
+    - We don't have Echtvar annotations for chrM(?)
+
+* Step M2: Concat the reformatted Mito MatrixTable to the whole-genome
 """
 
 from functools import cache
 
 import loguru
+
 from cpg_flow import stage, targets, utils
 from cpg_utils import Path
 
@@ -44,6 +56,7 @@ from talos.cpg_internal_scripts import cpg_flow_utils
 from talos.cpg_internal_scripts.cpgflow_jobs import (
     AnnotateConsequenceUsingBcftools,
     AnnotateGnomadFrequencies,
+    AnnotateSpliceAiFromHt,
     ComposeVcfFragments,
     ExtractVcfFromMt,
     JumpAnnotationsFromHtToFinalMt,
@@ -66,7 +79,7 @@ def does_final_file_path_exist(cohort: targets.Cohort) -> bool:
     return utils.exists(
         cpg_flow_utils.generate_dataset_prefix(
             dataset=cohort.dataset.name,
-            stage_name='TransferAnnotationsToMt',
+            stage_name='AnnotateSpliceAi',
             hash_value=cohort.id,
         )
         / f'{cohort.id}.mt',
@@ -128,6 +141,10 @@ class ConcatenateSitesOnlyVcfFragments(stage.CohortStage):
         """Trigger a rolling merge using gcloud compose, gluing all the individual files together."""
 
         output = self.expected_outputs(cohort)
+
+        if does_final_file_path_exist(cohort):
+            loguru.logger.info(f'Skipping {self.name} for {cohort.id}, final workflow output already exists')
+            return self.make_outputs(cohort, output, jobs=None)
 
         extraction_outputs = inputs.as_dict(cohort, ExtractVcfFromDatasetMt)
 
@@ -250,20 +267,17 @@ class AnnotatedVcfIntoHt(stage.CohortStage):
         return self.make_outputs(cohort, data=output, jobs=job)
 
 
-@stage.stage(
-    required_stages=[AnnotatedVcfIntoHt, ExtractVcfFromDatasetMt],
-    analysis_type='talos_prep',
-)
+@stage.stage(required_stages=[AnnotatedVcfIntoHt, ExtractVcfFromDatasetMt])
 class TransferAnnotationsToMt(stage.CohortStage):
     """Take the variant MatrixTable and a HT of annotations, combine into a final MT."""
 
     def expected_outputs(self, cohort: targets.Cohort) -> Path:
-        temp_prefix = cpg_flow_utils.generate_dataset_prefix(
+        prefix = cpg_flow_utils.generate_dataset_prefix(
             dataset=cohort.dataset.name,
             stage_name=self.name,
             hash_value=cohort.id,
         )
-        return temp_prefix / f'{cohort.id}.mt'
+        return prefix / f'{cohort.id}.mt'
 
     def queue_jobs(self, cohort: targets.Cohort, inputs: stage.StageInput) -> stage.StageOutput:
         output = self.expected_outputs(cohort)
@@ -284,6 +298,38 @@ class TransferAnnotationsToMt(stage.CohortStage):
             input_mt=mt,
             output_mt=output,
             job_attrs=self.get_job_attrs(cohort),
+        )
+
+        return self.make_outputs(cohort, data=output, jobs=job)
+
+
+# tack on a private stage which adds SpliceAi results
+
+
+@stage.stage(
+    required_stages=[TransferAnnotationsToMt],
+    analysis_type='talos_prep',
+)
+class AnnotateSpliceAi(stage.CohortStage):
+    """Take the annotated MatrixTable and add SpliceAi annotations. Private CPG stage."""
+
+    def expected_outputs(self, cohort: targets.Cohort) -> Path:
+        prefix = cpg_flow_utils.generate_dataset_prefix(
+            dataset=cohort.dataset.name,
+            stage_name=self.name,
+            hash_value=cohort.id,
+        )
+        return prefix / f'{cohort.id}.mt'
+
+    def queue_jobs(self, cohort: targets.Cohort, inputs: stage.StageInput) -> stage.StageOutput:
+        output = self.expected_outputs(cohort)
+
+        input_mt = inputs.as_str(cohort, TransferAnnotationsToMt)
+
+        job = AnnotateSpliceAiFromHt.add_job(
+            input_mt=input_mt,
+            output_mt=str(output),
+            cohort_id=cohort.id,
         )
 
         return self.make_outputs(cohort, data=output, jobs=job)
