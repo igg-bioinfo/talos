@@ -11,12 +11,12 @@ CategoryBooleanSV1:
 from argparse import ArgumentParser
 
 from loguru import logger
+from mendelbrot.pedigree_parser import PedigreeParser
 
 import hail as hl
 
 from talos.config import config_retrieve
 from talos.models import PanelApp
-from talos.pedigree_parser import PedigreeParser
 from talos.RunHailFiltering import MISSING_INT, ONE_INT, green_from_panelapp, subselect_mt_to_pedigree
 from talos.utils import read_json_from_path
 
@@ -263,10 +263,7 @@ def main(vcf_path: str, panelapp_path: str, mane_json: str, pedigree: str, vcf_o
         reference_genome='GRCh38',
         skip_invalid_loci=True,
         force_bgz=True,
-    ).checkpoint(
-        output='temporary.mt',
-        _read_if_exists=True,
-    )
+    ).checkpoint(output='temporary.mt')
 
     # parse the pedigree into an object
     pedigree_data = PedigreeParser(pedigree)

@@ -15,7 +15,11 @@ from cpg_flow.targets import Cohort
 from cpg_utils import Path, config, hail_batch, to_path
 
 from talos.cpg_internal_scripts.annotation_stages import AnnotateSpliceAi
-from talos.cpg_internal_scripts.cpg_flow_utils import generate_dataset_prefix, query_for_latest_analysis
+from talos.cpg_internal_scripts.cpg_flow_utils import (
+    check_for_dataset_centric_cohorts,
+    generate_dataset_prefix,
+    query_for_latest_analysis,
+)
 from talos.cpg_internal_scripts.cpgflow_jobs import AnnotateMitoCsqUsingBcftools, MakeConfig
 from talos.static_values import get_granular_date
 
@@ -163,6 +167,7 @@ class MakeRuntimeConfig(stage.CohortStage):
         }
 
     def queue_jobs(self, cohort: targets.Cohort, inputs: stage.StageInput) -> stage.StageOutput:
+        _cohort_dataset_pass = check_for_dataset_centric_cohorts()
         expected_outputs = self.expected_outputs(cohort)
 
         MakeConfig.create_config(
@@ -478,10 +483,9 @@ class RunHailFilteringSv(stage.CohortStage):
         panelapp_json = hail_batch.get_batch().read_input(inputs.as_path(cohort, UnifiedPanelAppParser))
         pedigree = hail_batch.get_batch().read_input(inputs.as_path(cohort, MakeHpoPedigree))
 
-        cpu: int = config.config_retrieve(['RunHailFiltering', 'cores', 'sv'], 2)
         job = set_up_job_with_resources(
             name=f'RunHailFilteringSV: {cohort.id} ({cohort.dataset.name}), {path_or_none}',
-            cpu=cpu,
+            cpu=2,
             memory='highmem',
         )
 
@@ -602,13 +606,16 @@ class ValidateVariantInheritance(stage.CohortStage):
         # find the latest analysis result, and use it as a history file
         history_string = ''
         if (
-            latest_results := query_for_latest_analysis(
-                dataset=cohort.dataset.name,
-                analysis_type='aip-results',
-                sequencing_type=config.config_retrieve(['workflow', 'sequencing_type']),
-                long_read=config.config_retrieve(['workflow', 'long_read'], False),
+            (
+                latest_results := query_for_latest_analysis(
+                    dataset=cohort.dataset.name,
+                    analysis_type='aip-results',
+                    sequencing_type=config.config_retrieve(['workflow', 'sequencing_type']),
+                    long_read=config.config_retrieve(['workflow', 'long_read'], False),
+                )
             )
-        ) is not None:
+            is not None
+        ) and config.config_retrieve(['workflow', 'use_history'], True):
             history_string = f'--previous {hail_batch.get_batch().read_input(latest_results)}'
 
         job.command(f'export TALOS_CONFIG={runtime_config}')
