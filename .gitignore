@@ -96,9 +96,12 @@ dmypy.json
 #nextflow
 .nextflow/
 .nextflow.log*
-nextflow/cohort_outputs/
+nextflow/*test/
 nextflow/processed_annotations/
 work/
+
+# mkdocs
+site/
 
 # Added by code-review-graph
 .code-review-graph/

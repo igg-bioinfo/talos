@@ -2,6 +2,7 @@
 A home for all data models used in Talos
 """
 
+import re
 from enum import Enum
 from itertools import pairwise
 from typing import Any
@@ -19,6 +20,7 @@ from talos.liftover.lift_2_0_0_to_2_1_0 import panelapp as pa_200_to_210
 from talos.liftover.lift_2_0_0_to_2_1_0 import resultdata as rd_200_to_210
 from talos.liftover.lift_2_1_0_to_2_2_0 import dl_panelapp as dl_pa_210_to_220
 from talos.liftover.lift_2_1_0_to_2_2_0 import resultdata as rd_210_to_220
+from talos.liftover.lift_2_2_0_to_2_3_0 import dl_panelapp as dl_pa_220_to_230
 from talos.liftover.lift_none_to_1_0_0 import resultdata as rd_none_to_1_0_0
 from talos.static_values import get_granular_date
 
@@ -26,8 +28,8 @@ NON_HOM_CHROM = ['X', 'Y', 'MT', 'M']
 CHROM_ORDER = list(map(str, range(1, 23))) + NON_HOM_CHROM
 
 # some kind of version tracking
-CURRENT_VERSION = '2.2.0'
-ALL_VERSIONS = [None, '1.0.0', '1.0.1', '1.0.2', '1.0.3', '1.1.0', '1.2.0', '2.0.0', '2.1.0', '2.2.0']
+CURRENT_VERSION = '2.3.0'
+ALL_VERSIONS = [None, '1.0.0', '1.0.1', '1.0.2', '1.0.3', '1.1.0', '1.2.0', '2.0.0', '2.1.0', '2.2.0', '2.3.0']
 
 # ratios for use in AB testing
 MAX_WT = 0.15
@@ -40,7 +42,6 @@ CATEGORY_TRANSLATOR: dict[str, str] = {
     'avi': 'High AVI score',
     '1': 'ClinVar P/LP',
     'clinvarplp': 'ClinVar P/LP',
-    'ClinVarP/LP': 'ClinVar P/LP',
     'clinvar0star': 'ClinVar 0-star',
     'clinvar0starnewgene': 'ClinVar Recent Gene',
     '3': 'High Impact',
@@ -59,10 +60,15 @@ CATEGORY_TRANSLATOR: dict[str, str] = {
     'exomiser': 'Exomiser',
 }
 
+CATEGORY_FLATTENER = re.compile(r'[\W_]+', re.ASCII)
+
 
 def translate_category(cat: str) -> str:
     """Translate a category from config file to a more descriptive name. If not found, return the original."""
-    return CATEGORY_TRANSLATOR.get(cat.lower(), cat)
+
+    # for full matching we need a comparison that strips out spaces and punctuation
+    search_key = CATEGORY_FLATTENER.sub('', cat).lower()
+    return CATEGORY_TRANSLATOR.get(search_key, cat)
 
 
 class FileTypes(Enum):
@@ -410,6 +416,7 @@ class PanelDetail(BaseModel):
     moi: str = Field(default_factory=str)
     new: set[int] = Field(default_factory=set)
     panels: set[int] = Field(default_factory=set)
+    panel_confidences: dict[int, int] = Field(default_factory=dict)
 
 
 class PanelShort(BaseModel):
@@ -438,6 +445,7 @@ class DownloadedPanelAppGenePanelDetail(BaseModel):
 
     moi: str
     date: str = Field(default_factory=str)
+    confidence: int = Field(default_factory=int)
 
 
 class DownloadedPanelAppGene(BaseModel):
@@ -554,6 +562,7 @@ class PedigreeMember(BaseModel):
 LIFTOVER_METHODS: dict = {
     DownloadedPanelApp: {
         '2.1.0_2.2.0': dl_pa_210_to_220,
+        '2.2.0_2.3.0': dl_pa_220_to_230,
     },
     PanelApp: {
         '1.2.0_2.0.0': pa_120_to_200,
