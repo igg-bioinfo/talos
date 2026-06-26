@@ -1,7 +1,7 @@
 #!/usr/bin/env nextflow
 
 nextflow.enable.dsl=2
-
+nextflow.preview.output= true
 /*
     Talos Unified Workflow
     ======================

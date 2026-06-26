@@ -11,7 +11,7 @@ The data prepared in this workflow is:
 - Mane data, downloaded and reformatted
 - BED file representing ROI for all Ensembl genes
 */
-
+nextflow.preview.output = true
 nextflow.enable.dsl=2
 
 include { AnnotateClinvarWithBcftools } from './nextflow/modules/prep/AnnotateClinvarWithBcftools/main'
